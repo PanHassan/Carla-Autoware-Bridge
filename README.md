@@ -230,29 +230,29 @@ building > W: GPG error: http://packages.ros.org/ros2/ubuntu jammy InRelease: Th
 E: The repository 'http://packages.ros.org/ros2/ubuntu jammy InRelease' is not signed.
 
 Solution: Utwórz plik Dockerfile.autoware, który zastępuje dotychczasowe źródła ROS 2 nową, poprawnie podpisaną listą i kluczem.
-
-### plik: Dockerfile.autoware
+```bash
+# plik: Dockerfile.autoware
 FROM ghcr.io/autowarefoundation/autoware:humble-2024.01-cuda-amd64
 USER root
 
-### 1) Usunięcie istniejącej listy ROS2, żeby nie ładowały starego klucza
+# 1) Usunięcie istniejącej listy ROS2, żeby nie ładowały starego klucza
 RUN rm -f /etc/apt/sources.list.d/ros2*.list
 
-### 2) Instalacja narzędzia potrzebnego do pobrania klucza i wyczyszczenia cache
+# 2) Instalacja narzędzia potrzebnego do pobrania klucza i wyczyszczenia cache
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       curl gnupg2 lsb-release && \
     rm -rf /var/lib/apt/lists/*
 
-### 3) Pobranie i dodanie aktualnego GPG‑klucz ROS2
+# 3) Pobranie i dodanie aktualnego GPG‑klucz ROS2
 RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
       | apt-key add -
 
-### 4) Dodanie oficjalnego repozytorium ROS2 Jammy
+# 4) Dodanie oficjalnego repozytorium ROS2 Jammy
 RUN echo "deb [arch=$(dpkg --print-architecture)] http://packages.ros.org/ros2/ubuntu jammy main" \
       > /etc/apt/sources.list.d/ros2.list
 
-### 5) Instalacja paczki NVIDIA / GLVND
+# 5) Instalacja paczki NVIDIA / GLVND
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         libglvnd0 \
@@ -262,15 +262,18 @@ RUN apt-get update && \
         libgles2 && \
     rm -rf /var/lib/apt/lists/*
 
-### 6) Podmiana tylko plików konfiguracyjnych GLVND od NVIDII
+# 6) Podmiana tylko plików konfiguracyjnych GLVND od NVIDII
 COPY --from=nvidia/opengl:1.0-glvnd-devel-ubuntu22.04 \
      /usr/share/glvnd/egl_vendor.d/10_nvidia.json \
      /usr/share/glvnd/egl_vendor.d/10_nvidia.json
 
-### 7) Ustawienia środowiskowe NVIDIA
+# 7) Ustawienia środowiskowe NVIDIA
 ENV NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
 ENV NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:-all}
-
+```
+```bash
+docker build -t my_Autoware .
+```
 Inside docker
 ```bash
 cd /home/ads/Carla-Autoware-Bridge/autoware
