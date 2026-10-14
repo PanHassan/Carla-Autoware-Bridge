@@ -1,0 +1,52 @@
+# CARLA 0.9.16 + Autoware 1.9.0 (autoware_carla_interface). Wersje w pliku .env.
+#
+#   xhost +local:docker
+#   docker compose up -d                 # start CARLA i kontenera Autoware
+#   ./scripts/aw_shell.sh                # terminal w kontenerze Autoware
+#   aw-carla Town01                      # (w kontenerze) uruchom Autoware
+#   docker compose down                  # zatrzymaj wszystko
+
+x-common: &common
+  network_mode: host
+  ipc: host
+  privileged: true
+  environment: &env
+    DISPLAY: ${DISPLAY:-:0}
+    QT_X11_NO_MITSHM: "1"
+    NVIDIA_VISIBLE_DEVICES: all
+    NVIDIA_DRIVER_CAPABILITIES: all
+  # GPU przez CDI: w przeciwieństwie do `driver: nvidia` montuje też sterownik Vulkan NVIDII
+  # (nvidia_icd.json). Bez niego CARLA renderuje na CPU (lavapipe) i jest bezużyteczna.
+  # Wymaga Docker >= 25 i NVIDIA Container Toolkit >= 1.17 (spec: `nvidia-ctk cdi list`).
+  devices:
+    - nvidia.com/gpu=all
+
+services:
+  carla:
+    <<: *common
+    image: ${CARLA_IMAGE:-carlasim/carla:${CARLA_VERSION}}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    command: bash -c "./CarlaUE4.sh ${CARLA_ARGS}"
+    restart: unless-stopped
+
+  autoware:
+    <<: *common
+    build:
+      context: docker/autoware
+      args:
+        ROS_DISTRO: ${ROS_DISTRO}
+        AUTOWARE_VERSION: ${AUTOWARE_VERSION}
+        CARLA_VERSION: ${CARLA_VERSION}
+    image: carla-autoware:${AUTOWARE_VERSION}-${ROS_DISTRO}
+    environment:
+      <<: *env
+      HOST_UID: ${HOST_UID:-1000}
+      HOST_GID: ${HOST_GID:-1000}
+      AUTOWARE_VERSION: ${AUTOWARE_VERSION}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${AUTOWARE_DATA}:/home/aw/autoware_data
+      - ./ws:/home/aw/ws
+      - ./utils:/home/aw/utils
+    command: sleep infinity

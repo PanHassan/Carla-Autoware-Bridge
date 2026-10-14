@@ -1,0 +1,7 @@
+<launch>
+  <arg name="speed_limit_kmh" default="30.0"/>
+  <node pkg="carla_autoware_examples" exec="speed_monitor" name="speed_monitor" output="screen">
+    <param name="use_sim_time" value="true"/>
+    <param name="speed_limit_kmh" value="$(var speed_limit_kmh)"/>
+  </node>
+</launch>

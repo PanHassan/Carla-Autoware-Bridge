@@ -1,0 +1,14 @@
+# Lokalne poprawki - skopiuj do compose.override.yaml (docker compose wczyta go automatycznie).
+services:
+  carla:
+    # Inny obraz CARLA (np. lokalny mirror w laboratorium):
+    # image: registry.example.org/carla:0.9.16
+    # Gdy CDI nie jest dostępne (stary Docker / NVIDIA Container Toolkit), można wrócić do
+    # klasycznego przydziału GPU i ręcznie podmontować sterownik Vulkan NVIDII:
+    # devices: !reset []
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{driver: nvidia, count: all, capabilities: [gpu]}]
+    # volumes:
+    #   - /usr/share/vulkan/icd.d/nvidia_icd.json:/etc/vulkan/icd.d/nvidia_icd.json:ro

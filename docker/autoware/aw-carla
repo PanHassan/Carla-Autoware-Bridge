@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Uruchamia Autoware połączone z CARLA.
+# Użycie: aw-carla [MAPA] [dodatkowe argumenty ros2 launch, np. perception:=false]
+# Mapa musi istnieć w ~/autoware_data/maps/<MAPA> (patrz scripts/download_map.sh).
+# Nazwa katalogu mapy = nazwa świata ładowanego w CARLA (Town01, Town10HD, ...).
+set -e
+source /etc/profile.d/carla_autoware.sh
+
+MAP="${1:-Town01}"
+shift || true
+MAP_PATH="$HOME/autoware_data/maps/$MAP"
+
+if [ ! -f "$MAP_PATH/lanelet2_map.osm" ]; then
+    echo "Brak mapy $MAP_PATH - uruchom na hoście: ./scripts/download_map.sh $MAP" >&2
+    exit 1
+fi
+
+# CARLA otwiera port 2000 zanim świat jest gotowy - czekamy aż faktycznie odpowiada,
+# inaczej autoware_carla_interface kończy się timeoutem przy ładowaniu mapy.
+echo "Czekam na serwer CARLA (localhost:2000)..."
+python3 - <<'EOF'
+import sys, time
+import carla
+deadline = time.time() + 180
+while True:
+    try:
+        client = carla.Client("localhost", 2000)
+        client.set_timeout(5.0)
+        client.get_world()
+        print("CARLA gotowa, wersja serwera:", client.get_server_version())
+        break
+    except RuntimeError:
+        if time.time() > deadline:
+            sys.exit("CARLA nie odpowiada - czy działa `docker compose up -d`?")
+        time.sleep(2)
+EOF
+
+exec ros2 launch autoware_launch e2e_simulator.launch.xml \
+    map_path:="$MAP_PATH" \
+    vehicle_model:=sample_vehicle \
+    sensor_model:=carla_sensor_kit \
+    simulator_type:=carla \
+    "$@"

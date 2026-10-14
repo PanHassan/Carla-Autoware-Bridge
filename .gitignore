@@ -127,3 +127,14 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# ROS 2 workspace
+ws/build/
+ws/install/
+ws/log/
+
+# Lokalne ustawienia docker compose
+compose.override.yaml
+
+# Plik z wersjami komponentów jest częścią repozytorium
+!.env
