@@ -2,7 +2,7 @@
 # Pobiera modele ML Autoware (percepcja: CenterPoint, wykrywanie świateł itd., ~3 GB)
 # do $AUTOWARE_DATA/ml_models oficjalnym playbookiem Ansible z repozytorium Autoware.
 # Działa w kontenerze Autoware, więc na hoście nie trzeba instalować Ansible ani podawać sudo.
-# Wymaga zbudowanego obrazu: docker compose build autoware
+# Wymaga pobranego obrazu: docker compose pull
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

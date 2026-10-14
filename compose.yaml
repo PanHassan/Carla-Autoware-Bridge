@@ -36,9 +36,10 @@ services:
       context: docker/autoware
       args:
         ROS_DISTRO: ${ROS_DISTRO}
-        AUTOWARE_VERSION: ${AUTOWARE_VERSION}
         CARLA_VERSION: ${CARLA_VERSION}
-    image: carla-autoware:${AUTOWARE_VERSION}-${ROS_DISTRO}
+    # Gotowy obraz z GHCR (docker compose pull). `docker compose build autoware` buduje go
+    # lokalnie z Dockerfile'a, a ./scripts/publish_image.sh wypycha nową wersję do rejestru.
+    image: ${AUTOWARE_IMAGE:-ghcr.io/panhassan/carla-autoware}:${AUTOWARE_VERSION}-${ROS_DISTRO}
     environment:
       <<: *env
       HOST_UID: ${HOST_UID:-1000}

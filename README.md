@@ -36,6 +36,8 @@ w kontenerach Docker, więc nie trzeba niczego kompilować ani łatać w Autowar
   w oficjalnym obrazie Autoware.
 - Repozytorium dodaje do obrazu Autoware tylko pakiet `carla==0.9.16` dla Pythona
   ([`docker/autoware/Dockerfile`](docker/autoware/Dockerfile)), skrypty i przykłady.
+  Gotowy obraz leży w GHCR (`ghcr.io/panhassan/carla-autoware`), więc nie zależy od tego,
+  czy oficjalny obraz Autoware w tej wersji nadal istnieje.
 
 > **Skąd zmiana?** Poprzednia wersja tego repo używała mostu TUM (`carla-ros-bridge` +
 > `autoware_auto_msgs`), który działał tylko z Autoware 2024.01 i wymagał ręcznych zmian
@@ -109,12 +111,12 @@ cd Carla-Autoware-Bridge
 # Mapa (lanelet2 + chmura punktów) -> ~/autoware_data/maps/Town01
 ./scripts/download_map.sh Town01          # dostępne: Town01-07, Town10HD
 
-# Modele sieci neuronowych dla percepcji -> ~/autoware_data/ml_models (kilka GB, pyta o sudo)
-./scripts/download_artifacts.sh
+# Pobranie obrazów CARLA i Autoware (długo, ~30 GB)
+docker compose pull
 
-# Pobranie CARLA i zbudowanie obrazu Autoware (długo, ~30 GB)
-docker compose pull carla
-docker compose build autoware
+# Modele sieci neuronowych dla percepcji -> ~/autoware_data/ml_models (~3 GB)
+# Działa w kontenerze Autoware, więc wymaga pobranego obrazu (krok wyżej).
+./scripts/download_artifacts.sh
 ```
 
 ## Uruchomienie
@@ -210,7 +212,7 @@ Najważniejsze tematy:
 Wersje i opcje są w pliku [`.env`](.env):
 
 - `ROS_DISTRO=jazzy` (domyślnie) albo `humble`. Humble kończy wsparcie w maju 2027.
-  Po zmianie: `docker compose build autoware`.
+  Po zmianie: `docker compose pull autoware`.
 - `CARLA_ARGS`: argumenty serwera CARLA. Domyślnie `-RenderOffScreen` (bez okna symulatora,
   dużo szybciej). Usuń tę flagę, jeśli chcesz okno CARLA, albo zmień jakość
   (`-quality-level=Epic`).
@@ -230,6 +232,27 @@ i steruj przez `drive_to_goal`.
 Lokalne zmiany w `compose.yaml` (inny obraz CARLA, dodatkowe wolumeny) wpisuj do
 `compose.override.yaml`. Wzór jest w [`compose.override.example.yaml`](compose.override.example.yaml).
 
+### Własny obraz Autoware (prowadzący)
+
+Po zmianie [`docker/autoware/Dockerfile`](docker/autoware/Dockerfile) zbuduj obraz lokalnie
+(`docker compose build autoware`). Studenci dostaną go przez `docker compose pull` dopiero
+po wypchnięciu do GHCR:
+
+```bash
+# jednorazowo; hasło = token GitHub (classic) z uprawnieniem write:packages
+docker login ghcr.io -u PanHassan
+./scripts/publish_image.sh               # ROS_DISTRO z .env
+./scripts/publish_image.sh jazzy humble  # oba warianty
+```
+
+Nowy pakiet w GHCR jest prywatny. Raz ustaw go jako publiczny: GitHub → Packages →
+`carla-autoware` → Package settings → Change visibility → Public.
+
+Obraz bazowy Autoware jest przypięty po digeście w Dockerfile, więc przebudowa daje to samo
+środowisko, nawet jeśli tag w `ghcr.io/autowarefoundation` zostanie nadpisany. Przy przejściu
+na nową wersję Autoware zaktualizuj digesty (polecenie jest w komentarzu w Dockerfile)
+i `AUTOWARE_VERSION` w `.env`.
+
 ## Rozwiązywanie problemów
 
 | Objaw | Rozwiązanie |
@@ -240,7 +263,7 @@ Lokalne zmiany w `compose.yaml` (inny obraz CARLA, dodatkowe wolumeny) wpisuj do
 | symulacja wolniejsza niż czas rzeczywisty (`ros2 topic hz /clock` < 20 Hz) | GPU nie nadąża: `-RenderOffScreen`, `use_light_weight_sensor_mapping:=True`, zamknij inne programy używające GPU |
 | RViz się nie otwiera | `xhost +local:docker`, sprawdź `echo $DISPLAY` przed `docker compose up` |
 | tematy ROS niewidoczne z hosta | kontener używa CycloneDDS tylko na `lo`. Na hoście ustaw `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp` i ten sam `CYCLONEDDS_URI` (`docker compose exec autoware cat /home/aw/cyclonedds.xml`) |
-| sieć uczelniana blokuje pobieranie | użyj innej sieci do `docker compose pull/build` i skryptów `download_*` |
+| sieć uczelniana blokuje pobieranie | użyj innej sieci do `docker compose pull` i skryptów `download_*` |
 
 ## Ograniczenia
 
