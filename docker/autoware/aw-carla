@@ -1,43 +1,80 @@
 #!/usr/bin/env bash
 # Uruchamia Autoware połączone z CARLA.
 # Użycie: aw-carla [MAPA] [dodatkowe argumenty ros2 launch, np. perception:=false]
+# Bez MAPY używa mapy załadowanej na serwerze CARLA (ustawia ją carla-master, CARLA_MAP w .env).
 # Mapa musi istnieć w ~/autoware_data/maps/<MAPA> (patrz scripts/download_map.sh).
-# Nazwa katalogu mapy = nazwa świata ładowanego w CARLA (Town01, Town10HD, ...).
 set -e
 source /etc/profile.d/carla_autoware.sh
 
-MAP="${1:-Town01}"
-shift || true
-MAP_PATH="$HOME/autoware_data/maps/$MAP"
+CARLA_HOST="${CARLA_HOST:-localhost}"
+CARLA_PORT="${CARLA_PORT:-2000}"
 
-if [ ! -f "$MAP_PATH/lanelet2_map.osm" ]; then
-    echo "Brak mapy $MAP_PATH - uruchom na hoście: ./scripts/download_map.sh $MAP" >&2
-    exit 1
+# Mapę wybiera serwer - opcjonalny argument tylko ją sprawdza.
+if [[ $# -gt 0 && "$1" != *:=* ]]; then
+    REQUESTED_MAP="$1"
+    shift
 fi
 
-# CARLA otwiera port 2000 zanim świat jest gotowy - czekamy aż faktycznie odpowiada,
-# inaczej autoware_carla_interface kończy się timeoutem przy ładowaniu mapy.
-echo "Czekam na serwer CARLA (localhost:2000)..."
-python3 - <<'EOF'
-import sys, time
+# CARLA otwiera port 2000 zanim świat jest gotowy, a carla-master potrzebuje chwili na
+# załadowanie mapy - czekamy aż świat jest w trybie synchronicznym i faktycznie się taktuje.
+echo "Czekam na serwer CARLA (${CARLA_HOST}:${CARLA_PORT})..."
+SERVER_MAP=$(CARLA_HOST="$CARLA_HOST" CARLA_PORT="$CARLA_PORT" python3 - <<'EOF'
+import os, sys, time
 import carla
+host, port = os.environ["CARLA_HOST"], int(os.environ["CARLA_PORT"])
 deadline = time.time() + 180
 while True:
     try:
-        client = carla.Client("localhost", 2000)
+        client = carla.Client(host, port)
         client.set_timeout(5.0)
-        client.get_world()
-        print("CARLA gotowa, wersja serwera:", client.get_server_version())
-        break
+        world = client.get_world()
+        if world.get_settings().synchronous_mode:
+            world.wait_for_tick(5.0)
+            print("CARLA gotowa, wersja serwera:", client.get_server_version(), file=sys.stderr)
+            name = world.get_map().name.split("/")[-1]
+            print(name.removesuffix("_Opt"))
+            break
     except RuntimeError:
-        if time.time() > deadline:
-            sys.exit("CARLA nie odpowiada - czy działa `docker compose up -d`?")
-        time.sleep(2)
+        pass
+    if time.time() > deadline:
+        sys.exit("CARLA nie odpowiada albo nie działa carla-master - czy działa `docker compose up -d`?")
+    time.sleep(2)
 EOF
+)
 
+if [[ -n "${REQUESTED_MAP:-}" && "$REQUESTED_MAP" != "$SERVER_MAP" ]]; then
+    echo "Serwer CARLA ma mapę $SERVER_MAP, a podano $REQUESTED_MAP." >&2
+    echo "Mapę zmienia się na serwerze: CARLA_MAP w .env, potem docker compose up -d." >&2
+    exit 1
+fi
+
+MAP_PATH="$HOME/autoware_data/maps/$SERVER_MAP"
+if [ ! -f "$MAP_PATH/lanelet2_map.osm" ]; then
+    echo "Brak mapy $MAP_PATH - uruchom na hoście: ./scripts/download_map.sh $SERVER_MAP" >&2
+    exit 1
+fi
+echo "Mapa: $SERVER_MAP"
+
+# Domyślnie jedna kamera (CAM_FRONT) + lidar zamiast 6 kamer 1600x900: dużo mniej renderowania
+# na serwerze CARLA i danych w sieci (~40 zamiast ~350 MB/s). 6 kamer:
+# aw-carla use_light_weight_sensor_mapping:=False
+EXTRA_ARGS=()
+if [[ "$*" != *use_light_weight_sensor_mapping* ]]; then
+    EXTRA_ARGS+=(use_light_weight_sensor_mapping:=True)
+fi
+
+# Do czasu rzeczywistego wyrównuje carla-master, więc most nie czeka dodatkowo
+# (max_real_delta_seconds:=0.0).
+# Unikalna nazwa auta w CARLA, żeby kilka Autoware mogło jeździć w tym samym świecie.
+export CARLA_EGO_ROLE="ego_$(hostname)"
 exec ros2 launch autoware_launch e2e_simulator.launch.xml \
     map_path:="$MAP_PATH" \
     vehicle_model:=sample_vehicle \
     sensor_model:=carla_sensor_kit \
     simulator_type:=carla \
+    host:="$CARLA_HOST" \
+    port:="$CARLA_PORT" \
+    ego_vehicle_role_name:="$CARLA_EGO_ROLE" \
+    max_real_delta_seconds:=0.0 \
+    "${EXTRA_ARGS[@]}" \
     "$@"

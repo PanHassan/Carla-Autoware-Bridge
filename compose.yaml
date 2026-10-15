@@ -1,10 +1,14 @@
 # CARLA 0.9.16 + Autoware 1.9.0 (autoware_carla_interface). Wersje w pliku .env.
 #
 #   xhost +local:docker
-#   docker compose up -d                 # start CARLA i kontenera Autoware
+#   docker compose up -d                 # start CARLA, carla-master i kontenera Autoware
 #   ./scripts/aw_shell.sh                # terminal w kontenerze Autoware
-#   aw-carla Town01                      # (w kontenerze) uruchom Autoware
+#   aw-carla                             # (w kontenerze) uruchom Autoware
 #   docker compose down                  # zatrzymaj wszystko
+#
+# Serwer CARLA dla kilku Autoware (README, "Wspólny serwer CARLA"):
+#   serwer:  docker compose up -d carla carla-master
+#   student: CARLA_HOST=<adres serwera> w .env, docker compose up -d autoware
 
 x-common: &common
   network_mode: host
@@ -30,6 +34,26 @@ services:
     command: bash -c "./CarlaUE4.sh ${CARLA_ARGS}"
     restart: unless-stopped
 
+  # Jedyny proces, który taktuje świat CARLA: ładuje CARLA_MAP i włącza tryb synchroniczny.
+  # Mosty w kontenerach Autoware tylko czekają na kolejne kroki, więc do jednej CARLA może
+  # podłączyć się kilka Autoware naraz.
+  carla-master:
+    network_mode: host
+    build:
+      context: docker/carla-master
+      args:
+        CARLA_VERSION: ${CARLA_VERSION}
+    image: ${CARLA_MASTER_IMAGE:-ghcr.io/panhassan/carla-master}:${CARLA_VERSION}
+    environment:
+      CARLA_HOST: localhost
+      CARLA_PORT: ${CARLA_PORT:-2000}
+      CARLA_MAP: ${CARLA_MAP:-Town01}
+      CARLA_MASTER_PORT: ${CARLA_MASTER_PORT:-2005}
+      CARLA_STEP_TIMEOUT: ${CARLA_STEP_TIMEOUT:-0.25}
+    depends_on:
+      - carla
+    restart: unless-stopped
+
   autoware:
     <<: *common
     build:
@@ -45,6 +69,9 @@ services:
       HOST_UID: ${HOST_UID:-1000}
       HOST_GID: ${HOST_GID:-1000}
       AUTOWARE_VERSION: ${AUTOWARE_VERSION}
+      CARLA_HOST: ${CARLA_HOST:-localhost}
+      CARLA_PORT: ${CARLA_PORT:-2000}
+      CARLA_MASTER_PORT: ${CARLA_MASTER_PORT:-2005}
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ${AUTOWARE_DATA}:/home/aw/autoware_data
