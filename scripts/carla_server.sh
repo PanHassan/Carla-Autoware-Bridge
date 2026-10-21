@@ -27,12 +27,15 @@ case "${1:-}" in
             echo "Brak dostępu do ekranu $DISPLAY. Czy na tym komputerze jest zalogowana sesja graficzna?" >&2
             exit 1
         fi
-        export CARLA_ARGS="$ARGS"
-        echo "CARLA z oknem na ekranie $DISPLAY ($CARLA_ARGS)"
+        # Rozmiar okna: duże okno w jakości Epic kosztuje kilka razy więcej niż kamery wszystkich aut.
+        RES="${CARLA_WINDOW_RES:-$(sed -n 's/^CARLA_WINDOW_RES=//p' .env | tr -d '"')}"
+        RES="${RES:-1280x720}"
+        export CARLA_ARGS="$ARGS -windowed -ResX=${RES%x*} -ResY=${RES#*x}"
+        echo "CARLA z oknem na ekranie $DISPLAY ($CARLA_ARGS, jakość ${CARLA_QUALITY:-z .env})"
         ;;
     "")
         export CARLA_ARGS="-RenderOffScreen $ARGS"
-        echo "CARLA bez okna ($CARLA_ARGS)"
+        echo "CARLA bez okna ($CARLA_ARGS, jakość ${CARLA_QUALITY:-z .env})"
         ;;
     *)
         sed -n '3,6p' "$0" >&2

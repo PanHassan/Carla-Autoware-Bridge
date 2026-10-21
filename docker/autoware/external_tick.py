@@ -24,7 +24,7 @@ from .modules import carla_wrapper
 
 _MASTER = (os.environ.get("CARLA_HOST", "localhost"), int(os.environ.get("CARLA_MASTER_PORT", "2005")))
 _CLIENT_ID = f"{socket.gethostname()}-{os.getpid()}"
-# Nazwa auta tego klienta (ustawia aw-carla). Master usuwa je, gdy klient zniknie bez sprzątania.
+# Nazwa auta tego klienta (ustawia carla-aw). Master usuwa je, gdy klient zniknie bez sprzątania.
 _EGO_ROLE = os.environ.get("CARLA_EGO_ROLE", "-")
 _sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 _CAMERA_HZ = float(os.environ.get("CARLA_CAMERA_HZ", "10"))

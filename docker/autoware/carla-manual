@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Ręczna jazda autem po świecie CARLA (bez Autoware), razem z innymi podłączonymi.
+# Użycie: carla-manual [--res 1280x720] [--filter vehicle.tesla.*] [inne opcje manual_control.py]
+# Sterowanie: WASD/strzałki, Q bieg wsteczny, spacja hamulec ręczny, P autopilot, H pomoc, ESC koniec.
+set -e
+
+CARLA_HOST="${CARLA_HOST:-localhost}"
+CARLA_HOST="${CARLA_HOST%%/*}"  # bez ewentualnej maski sieci (np. 192.168.0.106/24)
+CARLA_PORT="${CARLA_PORT:-2000}"
+# Kontener nie ma karty dźwiękowej - bez tego pygame zasypuje terminal błędami ALSA.
+export SDL_AUDIODRIVER=dummy
+
+# Obraz z kamery idzie przez sieć w każdym kroku (20 Hz): 800x450 to ~29 MB/s na osobę,
+# 1280x720 już ~74 MB/s. Większe okno: carla-manual --res 1280x720
+exec python3 /opt/carla_manual/carla_manual.py \
+    --host "$CARLA_HOST" \
+    --port "$CARLA_PORT" \
+    --rolename "manual_$(hostname)" \
+    --res 800x450 \
+    "$@"

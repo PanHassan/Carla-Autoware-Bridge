@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Uruchamia Autoware połączone z CARLA.
-# Użycie: aw-carla [MAPA] [dodatkowe argumenty ros2 launch, np. perception:=false]
+# Użycie: carla-aw [MAPA] [dodatkowe argumenty ros2 launch, np. perception:=false]
 # Bez MAPY używa mapy załadowanej na serwerze CARLA (ustawia ją carla-master, CARLA_MAP w .env).
 # Mapa musi istnieć w ~/autoware_data/maps/<MAPA> (patrz scripts/download_map.sh).
 set -e
@@ -63,7 +63,7 @@ echo "Mapa: $SERVER_MAP"
 
 # Domyślnie jedna kamera (CAM_FRONT) + lidar zamiast 6 kamer 1600x900: dużo mniej renderowania
 # na serwerze CARLA i danych w sieci (~40 zamiast ~350 MB/s). 6 kamer:
-# aw-carla use_light_weight_sensor_mapping:=False
+# carla-aw use_light_weight_sensor_mapping:=False
 EXTRA_ARGS=()
 if [[ "$*" != *use_light_weight_sensor_mapping* ]]; then
     EXTRA_ARGS+=(use_light_weight_sensor_mapping:=True)

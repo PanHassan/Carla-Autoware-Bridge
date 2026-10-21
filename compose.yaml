@@ -7,7 +7,7 @@
 #   xhost +local:docker
 #   docker compose up -d autoware
 #   ./scripts/aw_shell.sh                  # terminal w kontenerze Autoware
-#   aw-carla                               # (w kontenerze) uruchom Autoware
+#   carla-aw                               # (w kontenerze) uruchom Autoware
 #   docker compose down                    # zatrzymaj
 
 x-common: &common
@@ -31,7 +31,7 @@ services:
     image: ${CARLA_IMAGE:-carlasim/carla:${CARLA_VERSION}}
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
-    command: bash -c "./CarlaUE4.sh ${CARLA_ARGS}"
+    command: bash -c "./CarlaUE4.sh ${CARLA_ARGS} -quality-level=${CARLA_QUALITY:-Epic}"
     restart: unless-stopped
 
   # Jedyny proces, który taktuje świat CARLA: ładuje CARLA_MAP i włącza tryb synchroniczny.

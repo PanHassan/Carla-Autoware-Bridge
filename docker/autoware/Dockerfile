@@ -18,7 +18,7 @@ LABEL org.opencontainers.image.source=https://github.com/PanHassan/Carla-Autowar
 # PIP_BREAK_SYSTEM_PACKAGES jest wymagane na Ubuntu 24.04 (PEP 668), starszy pip je ignoruje.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends python3-pip \
-    && PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install --no-cache-dir "carla==${CARLA_VERSION}" \
+    && PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install --no-cache-dir "carla==${CARLA_VERSION}" pygame \
     && rm -rf /var/lib/apt/lists/*
 
 # Tryb wielu klientów: świat taktuje carla-master, a most tylko czeka na kolejne kroki
@@ -30,8 +30,11 @@ RUN pkg=$(dirname "$(find /opt/autoware/autoware_carla_interface -name carla_aut
     && grep -q "from . import external_tick" "$pkg/carla_autoware.py"
 
 COPY bashrc.sh /etc/profile.d/carla_autoware.sh
-COPY aw-carla /usr/local/bin/aw-carla
-RUN chmod +x /usr/local/bin/aw-carla \
+COPY carla-aw /usr/local/bin/carla-aw
+# Ręczna jazda (carla-manual): manual_control.py z CARLA 0.9.16 + blokada zmian wspólnego świata.
+COPY carla_manual /opt/carla_manual
+COPY carla-manual /usr/local/bin/carla-manual
+RUN chmod +x /usr/local/bin/carla-aw /usr/local/bin/carla-manual \
     && echo "source /etc/profile.d/carla_autoware.sh" >> /home/aw/.bashrc
 
 WORKDIR /home/aw/ws

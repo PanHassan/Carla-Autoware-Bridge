@@ -197,7 +197,8 @@ sieć albo komputer któregoś studenta, a nie serwer.
 
 ### Sieć
 
-- Firewall serwera musi przepuszczać TCP 2000–2002 (CARLA) i UDP 2005 (`carla-master`).
+- Firewall serwera musi przepuszczać TCP 2000–2002 (CARLA), UDP 2005 (`carla-master`)
+  i TCP 8000 (Traffic Manager, z którego korzysta autopilot w `carla-manual`).
   Domyślnie w Ubuntu firewall (`ufw`) jest wyłączony.
 - Serwer powinien mieć stały adres IP, bo terminale wpisują go w `.env`. Najprościej ustawić
   rezerwację DHCP w routerze (adres MAC: `ip link show`).
@@ -239,6 +240,36 @@ W pliku `.env` wpisz adres serwera:
 CARLA_HOST=192.168.0.106        # adres IP serwera CARLA
 ```
 
+### Wspólna jazda ręczna (`carla-manual`)
+
+Przed uruchomieniem Autoware każdy może pojeździć autem z klawiatury po wspólnym świecie
+i zobaczyć auta pozostałych:
+
+```bash
+xhost +local:docker
+docker compose up -d autoware
+./scripts/aw_shell.sh
+carla-manual                   # większe okno: carla-manual --res 1280x720
+```
+
+| Klawisz | Działanie |
+|---|---|
+| W / S, strzałki | gaz / hamulec |
+| A / D | skręt |
+| Q | bieg wsteczny |
+| spacja | hamulec ręczny |
+| P | autopilot |
+| Backspace | inne auto |
+| TAB | inna pozycja kamery |
+| H | pomoc |
+| ESC | koniec (auto znika z serwera) |
+
+Pogoda (C), warstwy mapy (V/B) i nagrywanie/odtwarzanie (CTRL+R/CTRL+P) są zablokowane,
+bo zmieniłyby świat wszystkim. To jest [`manual_control.py`](docker/autoware/carla_manual/manual_control.py)
+z CARLA 0.9.16 bez zmian, z blokadą w [`carla_manual.py`](docker/autoware/carla_manual/carla_manual.py).
+
+Obraz z kamery idzie przez sieć: okno 800×450 (domyślne) to ~29 MB/s na osobę, 1280×720 to ~74 MB/s.
+
 ### Uruchomienie
 
 ```bash
@@ -250,10 +281,10 @@ docker compose up -d autoware  # tylko Autoware; samo "docker compose up -d" uru
 W terminalu kontenera:
 
 ```bash
-aw-carla
+carla-aw
 ```
 
-`aw-carla` łączy się z serwerem, bierze z niego mapę i tworzy Twoje auto z przednią kamerą
+`carla-aw` łączy się z serwerem, bierze z niego mapę i tworzy Twoje auto z przednią kamerą
 i lidarem. Po ok. minucie otworzy się RViz. Dalej:
 
 1. **Lokalizacja**: w panelu stanu Autoware (po lewej) kliknij **Initialize with GNSS**
@@ -267,7 +298,7 @@ To samo bez klikania, z drugiego terminala (`./scripts/aw_shell.sh`):
 ros2 run carla_autoware_examples drive_to_goal --ros-args -p goal_x:=<x> -p goal_y:=<y> -p goal_yaw_deg:=<yaw>
 ```
 
-Zatrzymanie: `Ctrl+C` w terminalu z `aw-carla` (most usunie Twoje auto z serwera),
+Zatrzymanie: `Ctrl+C` w terminalu z `carla-aw` (most usunie Twoje auto z serwera),
 a na koniec `docker compose down`. Na jednym komputerze uruchamiaj jedno Autoware naraz:
 dwa widzą nawzajem swoje tematy ROS i się mieszają. W razie wątpliwości:
 `docker compose restart autoware`.
@@ -279,9 +310,9 @@ Obraz z kamery w RViz: panel `RecognitionResultOnImage` domyślnie pokazuje podg
 rozpoznawania sygnalizacji świetlnej, a mapy CARLA jej nie mają, więc widać „No Image”.
 Ustaw w nim temat `/sensing/camera/CAM_FRONT/image_raw`.
 
-### Przydatne argumenty `aw-carla`
+### Przydatne argumenty `carla-aw`
 
-Argumenty są przekazywane do `ros2 launch`, np. `aw-carla perception:=false`:
+Argumenty są przekazywane do `ros2 launch`, np. `carla-aw perception:=false`:
 
 | Argument | Działanie |
 |---|---|
@@ -333,7 +364,7 @@ sekcji powyżej (`docker compose pull` pobiera wszystkie obrazy naraz) i zostaw 
 ./scripts/carla_server.sh            # albo --window, żeby widzieć okno CARLA
 xhost +local:docker
 docker compose up -d autoware
-./scripts/aw_shell.sh                # w kontenerze: aw-carla
+./scripts/aw_shell.sh                # w kontenerze: carla-aw
 ```
 
 CARLA i Autoware dzielą wtedy jedno GPU, więc okno CARLA wyraźnie spowalnia symulację.
@@ -345,7 +376,9 @@ Wersje i opcje są w pliku [`.env`](.env):
 | Zmienna | Gdzie ma znaczenie | Działanie |
 |---|---|---|
 | `ROS_DISTRO` | terminal | `jazzy` (domyślnie) albo `humble` (wsparcie do maja 2027). Obraz humble nie jest opublikowany w GHCR: zbuduj go `docker compose build autoware` |
-| `CARLA_ARGS` | serwer | argumenty CARLA. Domyślnie `-RenderOffScreen -quality-level=Low -nosound`. Okno włącza `./scripts/carla_server.sh --window`, bez zmian w tym pliku |
+| `CARLA_QUALITY` | serwer | jakość grafiki: `Epic` (domyślnie) albo `Low` (szybciej). Dotyczy okna serwera, `carla-manual` i kamer Autoware. Pośrednich poziomów CARLA nie ma |
+| `CARLA_WINDOW_RES` | serwer | rozmiar okna CARLA przy `--window` (domyślnie `1280x720`). Duże okno w Epic mocno obciąża GPU serwera |
+| `CARLA_ARGS` | serwer | argumenty CARLA. Domyślnie `-RenderOffScreen -nosound`. Okno włącza `./scripts/carla_server.sh --window`, bez zmian w tym pliku |
 | `CARLA_MAP` | serwer | mapa ładowana przez `carla-master` |
 | `CARLA_NPC_VEHICLES` | serwer | liczba aut ruchu ulicznego |
 | `CARLA_SPECTATOR` | serwer | kamera okna: `top` (domyślnie, na starcie widok całej mapy z góry), `follow` (za kolejnymi autami), `off` (bez ustawiania) |
@@ -357,7 +390,7 @@ Bez ekranu (np. serwer w szafie) zamiast okna można też całkiem wyłączyć r
 
 | `CARLA_ARGS` | Okno | Kamery | Lidar / GNSS / IMU | Uwagi |
 |---|---|---|---|---|
-| `-RenderOffScreen -quality-level=Low -nosound` (domyślnie) | nie | tak | tak | renderuje na GPU bez okna |
+| `-RenderOffScreen -nosound` (domyślnie) | nie | tak | tak | renderuje na GPU bez okna |
 | `-nullrhi -nosound` | nie | **nie** | tak | bez renderowania, najlżejsze. Tylko z `perception:=false` lub percepcją z samego lidaru |
 
 Lokalne zmiany w `compose.yaml` (inny obraz CARLA, dodatkowe wolumeny) wpisuj do
@@ -393,7 +426,7 @@ i `AUTOWARE_VERSION` w `.env`.
 | CARLA kończy się zaraz po `Disabling core dumps.` | j.w. albo brak dostępu do ekranu w trybie z oknem: czy na serwerze jest zalogowana sesja graficzna |
 | `carla_server.sh --window`: „Brak dostępu do ekranu” | nikt nie jest zalogowany w sesji graficznej serwera. Zaloguj się albo uruchom bez okna |
 | `time-out ... waiting for the simulator` | CARLA jeszcze się ładuje albo padła: `docker compose logs carla` |
-| `aw-carla` czeka na serwer CARLA w nieskończoność | nie działa `carla-master` albo ma inną mapę: `docker compose logs carla-master` na serwerze. Na terminalu sprawdź `CARLA_HOST` (adres serwera mógł się zmienić) i firewall |
+| `carla-aw` czeka na serwer CARLA w nieskończoność | nie działa `carla-master` albo ma inną mapę: `docker compose logs carla-master` na serwerze. Na terminalu sprawdź `CARLA_HOST` (adres serwera mógł się zmienić) i firewall |
 | `Brak kolejnej klatki CARLA` | `carla-master` się zatrzymał: na serwerze `./scripts/carla_server.sh` |
 | symulacja wolniejsza niż czas rzeczywisty (< 20 kroków/s w logu `carla-master`) | duże „czekanie na klientów”: sieć (Wi-Fi) albo przeciążony terminal. Kabel zamiast Wi-Fi, zamknij inne programy |
 | w RViz „No Image” zamiast kamery | patrz [Uruchomienie](#uruchomienie-1): ustaw temat `/sensing/camera/CAM_FRONT/image_raw` |

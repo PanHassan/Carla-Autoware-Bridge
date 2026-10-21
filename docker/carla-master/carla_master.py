@@ -168,12 +168,14 @@ class Traffic:
         # Auta po poprzednim uruchomieniu mastera (np. po awarii) stoją bez Traffic Managera.
         self.destroy([v.id for v in world.get_actors().filter("vehicle.*")
                       if v.attributes.get("role_name") == NPC_ROLE])
-        if NPC_VEHICLES <= 0:
-            return
+        # Traffic Manager zawsze, także bez ruchu ulicznego: korzysta z niego autopilot (P)
+        # w carla-manual. Studenci łączą się z nim na porcie TM_PORT serwera.
         tm = client.get_trafficmanager(TM_PORT)
         tm.set_synchronous_mode(True)
         tm.set_global_distance_to_leading_vehicle(2.5)
         tm.global_percentage_speed_difference(30.0)
+        if NPC_VEHICLES <= 0:
+            return
         blueprints = [bp for bp in world.get_blueprint_library().filter("vehicle.*")
                       if int(bp.get_attribute("number_of_wheels")) == 4]
         spawn_points = world.get_map().get_spawn_points()
@@ -242,7 +244,8 @@ class Spectator:
     def refresh(self, now):
         # Lista aut co sekundę, nie w każdym kroku - to zapytanie do serwera.
         vehicles = list(self.world.get_actors().filter("vehicle.*"))
-        egos = [v for v in vehicles if v.attributes.get("role_name", "").startswith("ego_")]
+        egos = [v for v in vehicles
+                if v.attributes.get("role_name", "").startswith(("ego_", "manual_"))]
         self.candidates = sorted(egos or vehicles, key=lambda v: v.id)
         self.last_refresh = now
 
