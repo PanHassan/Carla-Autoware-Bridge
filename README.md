@@ -17,8 +17,9 @@ w kontenerach Docker, więc nie trzeba niczego kompilować ani łatać w Autowar
 ```
 ┌──────────────── kontener "carla" ────────────────┐   ┌─── kontener "carla-master" ───┐
 │  CARLA 0.9.16 (serwer, Unreal Engine 4)          │◀──│  mapa (CARLA_MAP), taktowanie │
-└──────────────▲───────────────────────────────────┘   │  świata, czeka na klientów    │
-               │ CARLA Python API (TCP 2000)           └──────────────▲────────────────┘
+└──────────────▲───────────────────────────────────┘   │  świata, ruch uliczny,        │
+               │ CARLA Python API (TCP 2000)           │  czeka na klientów            │
+               │                                     └──────────────▲────────────────┘
                │                                     "krok gotowy" (UDP 2005)
 ┌──────────────┴──── kontener "autoware" ──────────────────────────────┴┐
 │  autoware_carla_interface  ── czujniki ──▶  Autoware 1.9.0             │
@@ -31,7 +32,7 @@ w kontenerach Docker, więc nie trzeba niczego kompilować ani łatać w Autowar
 
 Świat CARLA taktuje tylko `carla-master`. Po każdym kroku czeka, aż wszystkie podłączone
 Autoware przetworzą dane z czujników, więc do jednej CARLA może podłączyć się kilka Autoware
-naraz, każde z własnym autem (patrz [Wspólny serwer CARLA](#wspólny-serwer-carla)).
+naraz, każde na innym komputerze i z własnym autem w tym samym świecie.
 
 - **[`autoware_carla_interface`](https://github.com/autowarefoundation/autoware_universe/tree/main/simulator/autoware_carla_interface)**
   to oficjalny most CARLA ↔ Autoware, utrzymywany w Autoware Universe. Łączy się z CARLA
@@ -41,8 +42,8 @@ naraz, każde z własnym autem (patrz [Wspólny serwer CARLA](#wspólny-serwer-c
   w oficjalnym obrazie Autoware.
 - Repozytorium dodaje do obrazu Autoware tylko pakiet `carla==0.9.16` dla Pythona
   ([`docker/autoware/Dockerfile`](docker/autoware/Dockerfile)), skrypty i przykłady.
-  Gotowy obraz leży w GHCR (`ghcr.io/panhassan/carla-autoware`), więc nie zależy od tego,
-  czy oficjalny obraz Autoware w tej wersji nadal istnieje.
+  Gotowe obrazy leżą w GHCR (`ghcr.io/panhassan/carla-autoware`, `ghcr.io/panhassan/carla-master`),
+  więc nie zależą od tego, czy oficjalny obraz Autoware w tej wersji nadal istnieje.
 - Most jest w obrazie lekko zmieniony ([`docker/autoware/external_tick.py`](docker/autoware/external_tick.py)):
   zamiast sam taktować świat, zgłasza gotowość do `carla-master`. Nie może też zmienić mapy
   ani ustawień świata, bo to zepsułoby symulację pozostałym klientom.
@@ -52,14 +53,24 @@ naraz, każde z własnym autem (patrz [Wspólny serwer CARLA](#wspólny-serwer-c
 > w `autoware_launch`. Autoware od tamtej pory przeszło na `autoware_msgs`, a most TUM nie jest
 > rozwijany. Stara wersja jest dostępna w historii git (gałąź `main` sprzed zmiany).
 
+## Dwa sposoby pracy
+
+| | Gdzie działa CARLA | Gdzie działa Autoware | Instrukcja |
+|---|---|---|---|
+| **Laboratorium** | jeden [serwer CARLA](#serwer-carla) dla wszystkich | na każdym [terminalu](#terminal-autoware) osobno | obie sekcje poniżej |
+| **Jeden komputer** | lokalnie | lokalnie | [Wszystko na jednym komputerze](#wszystko-na-jednym-komputerze) |
+
 ## Wymagania
 
-| | Minimum | Zalecane |
+| | Serwer CARLA | Terminal (Autoware) |
 |---|---|---|
-| System | Ubuntu 22.04 / 24.04 | Ubuntu 24.04 |
-| GPU | NVIDIA, 6 GB VRAM (lekka konfiguracja czujników) | NVIDIA ≥ 8 GB VRAM |
-| RAM | 16 GB | 32 GB |
-| Dysk | ~45 GB (obrazy ~30 GB, modele ML, mapy) | |
+| System | Ubuntu 22.04 / 24.04 (zalecane 24.04) | Ubuntu 22.04 / 24.04 (zalecane 24.04) |
+| GPU | NVIDIA, zalecane ≥ 8 GB VRAM | NVIDIA, min. 6 GB VRAM (percepcja w Autoware) |
+| RAM | 16 GB | 16 GB, zalecane 32 GB |
+| Dysk | ~25 GB (obraz CARLA) | ~20 GB (obraz Autoware, modele ML, mapy) |
+| Sieć | kabel, 1 Gbit/s | najlepiej kabel; Wi-Fi działa, ale wolniej |
+
+Na obu rodzajach komputerów zainstaluj sterownik NVIDIA, Docker i NVIDIA Container Toolkit.
 
 ### 1. Sterownik NVIDIA
 
@@ -108,30 +119,131 @@ nvidia-ctk cdi list            # musi pokazać nvidia.com/gpu=all
 # jeśli pusto:
 sudo nvidia-ctk cdi generate --output=/var/run/cdi/nvidia.yaml
 docker run --rm --device nvidia.com/gpu=all ubuntu nvidia-smi
+docker rmi ubuntu              # obraz testowy nie jest dalej potrzebny
 ```
 
-## Instalacja (jednorazowo)
+## Serwer CARLA
+
+Komputer z CARLA, do którego łączą się terminale z Autoware. Nie potrzebuje map Autoware
+ani modeli ML.
+
+### Instalacja (jednorazowo)
+
+```bash
+git clone https://github.com/PanHassan/Carla-Autoware-Bridge.git
+cd Carla-Autoware-Bridge
+docker compose pull carla carla-master       # ~20 GB
+```
+
+### Uruchomienie
+
+```bash
+./scripts/carla_server.sh            # bez okna (szybciej, np. serwer bez monitora)
+./scripts/carla_server.sh --window   # z oknem symulatora na monitorze serwera
+./scripts/carla_server.sh stop       # zatrzymaj
+```
+
+Po restarcie komputera kontenery wstają same. Jeśli w trybie z oknem okno się nie pojawi
+(sesja graficzna nie była jeszcze gotowa), uruchom ponownie `./scripts/carla_server.sh --window`.
+Zmiana trybu restartuje CARLA, więc podłączone Autoware trzeba wtedy uruchomić ponownie.
+
+### Podgląd w oknie
+
+Okno otwiera się na monitorze serwera, także gdy skrypt uruchomisz przez SSH. Na serwerze
+musi być zalogowana sesja graficzna.
+
+Kamera okna (`CARLA_SPECTATOR`) ma trzy tryby:
+
+| Tryb | Widok |
+|---|---|
+| `top` (domyślnie) | na starcie skośnie z góry na całą mapę, więc widać wszystkie auta. Potem kamera jest swobodna |
+| `follow` | za jednym autem studenta, co 20 s przełącza się na kolejne |
+| `off` | kamera zostaje tam, gdzie ustawi ją CARLA, i jest swobodna |
+
+Swobodną kamerą sterujesz w oknie CARLA: kliknij w okno, potem **prawy przycisk myszy +
+ruch** obraca kamerę, **W/S/A/D** przesuwa ją, **Q/E** w dół i w górę. Do widoku całej mapy
+wrócisz, restartując mastera: `docker compose restart carla-master`.
+
+```bash
+CARLA_SPECTATOR=off ./scripts/carla_server.sh --window
+```
+
+Na stałe: wpisz `CARLA_SPECTATOR=...` w `.env` na serwerze.
+
+### Mapa i ruch uliczny
+
+W `.env` na serwerze:
+
+- `CARLA_MAP`: mapa dla wszystkich (domyślnie `Town01`). Terminale muszą mieć pobraną tę samą mapę.
+- `CARLA_NPC_VEHICLES`: liczba aut na autopilocie (domyślnie 0). Ruch jest wspólny
+  dla wszystkich podłączonych Autoware.
+
+Po zmianie uruchom ponownie `./scripts/carla_server.sh` (z `--window`, jeśli chcesz okno).
+
+### Kto jest podłączony
+
+```bash
+docker compose logs -f carla-master
+```
+
+Pokazuje dołączających i odłączanych klientów oraz co 30 s statystyki, np.:
+
+```
+16.5 kroków/s, klientów: 1 | na krok: CARLA 1 ms, czekanie na klientów 58 ms, wyrównanie do czasu rzeczywistego 1 ms
+```
+
+20 kroków/s to czas rzeczywisty. Jeśli większość czasu to „czekanie na klientów”, hamuje
+sieć albo komputer któregoś studenta, a nie serwer.
+
+### Sieć
+
+- Firewall serwera musi przepuszczać TCP 2000–2002 (CARLA) i UDP 2005 (`carla-master`).
+  Domyślnie w Ubuntu firewall (`ufw`) jest wyłączony.
+- Serwer powinien mieć stały adres IP, bo terminale wpisują go w `.env`. Najprościej ustawić
+  rezerwację DHCP w routerze (adres MAC: `ip link show`).
+- Każde auto to ~20–40 MB/s danych z czujników. Kabel 1 Gbit/s wystarcza dla kilku osób.
+  Przez Wi-Fi symulacja zwalnia, bo każdy krok czeka na odpowiedzi z sieci.
+
+### Jak działa wspólny serwer
+
+- `carla-master` po każdym kroku czeka na wszystkich klientów, ale najwyżej
+  `CARLA_STEP_TIMEOUT` (domyślnie 0,25 s). Wolniejszy komputer spowalnia więc symulację
+  wszystkim, ale zawieszony klient jej nie zatrzyma. Po 3 s ciszy master przestaje na niego
+  czekać, a po 30 s usuwa jego auto.
+- Serwer liczy czujniki wszystkich aut (domyślnie 1 kamera + lidar na auto). Sama CARLA jest
+  szybka (na RTX 3060 ~90 kroków/s z jednym autem), więc zwykle ogranicza sieć.
+
+## Terminal (Autoware)
+
+Komputer studenta. Uruchamia Autoware i łączy się z serwerem CARLA.
+
+### Instalacja (jednorazowo)
 
 ```bash
 git clone https://github.com/PanHassan/Carla-Autoware-Bridge.git
 cd Carla-Autoware-Bridge
 
 # Mapa (lanelet2 + chmura punktów) -> ~/autoware_data/maps/Town01
-./scripts/download_map.sh Town01          # dostępne: Town01-07, Town10HD
+./scripts/download_map.sh Town01          # ta sama mapa co CARLA_MAP na serwerze
 
-# Pobranie obrazów CARLA i Autoware (długo, ~30 GB)
-docker compose pull
+# Obraz Autoware (~12 GB)
+docker compose pull autoware
 
 # Modele sieci neuronowych dla percepcji -> ~/autoware_data/ml_models (~3 GB)
-# Działa w kontenerze Autoware, więc wymaga pobranego obrazu (krok wyżej).
 ./scripts/download_artifacts.sh
 ```
 
-## Uruchomienie
+W pliku `.env` wpisz adres serwera:
+
+```bash
+CARLA_HOST=192.168.0.106        # adres IP serwera CARLA
+```
+
+### Uruchomienie
 
 ```bash
 xhost +local:docker            # zezwól kontenerom na otwieranie okien (po każdym logowaniu)
-docker compose up -d           # start CARLA, carla-master i kontenera Autoware w tle
+docker compose up -d autoware  # tylko Autoware; samo "docker compose up -d" uruchomiłoby też CARLA
 ./scripts/aw_shell.sh          # terminal w kontenerze Autoware
 ```
 
@@ -141,8 +253,8 @@ W terminalu kontenera:
 aw-carla
 ```
 
-`aw-carla` używa mapy załadowanej w CARLA (`CARLA_MAP` w `.env`, domyślnie Town01).
-Mapa musi być pobrana (`./scripts/download_map.sh`). Po ok. minucie otworzy się RViz. Dalej:
+`aw-carla` łączy się z serwerem, bierze z niego mapę i tworzy Twoje auto z przednią kamerą
+i lidarem. Po ok. minucie otworzy się RViz. Dalej:
 
 1. **Lokalizacja**: w panelu stanu Autoware (po lewej) kliknij **Initialize with GNSS**
    (albo ustaw pozycję narzędziem *2D Pose Estimate*).
@@ -155,13 +267,17 @@ To samo bez klikania, z drugiego terminala (`./scripts/aw_shell.sh`):
 ros2 run carla_autoware_examples drive_to_goal --ros-args -p goal_x:=<x> -p goal_y:=<y> -p goal_yaw_deg:=<yaw>
 ```
 
-Zatrzymanie: `Ctrl+C` w terminalu z `aw-carla`, a na koniec `docker compose down`.
-Przed ponownym `aw-carla` upewnij się, że poprzednie uruchomienie się zakończyło. Dwa
-Autoware na jednym komputerze widzą nawzajem swoje tematy ROS i się mieszają. W razie
-wątpliwości: `docker compose restart autoware`.
+Zatrzymanie: `Ctrl+C` w terminalu z `aw-carla` (most usunie Twoje auto z serwera),
+a na koniec `docker compose down`. Na jednym komputerze uruchamiaj jedno Autoware naraz:
+dwa widzą nawzajem swoje tematy ROS i się mieszają. W razie wątpliwości:
+`docker compose restart autoware`.
 
 Pierwsze uruchomienie z percepcją trwa kilka minut dłużej, bo TensorRT kompiluje modele
 (`Applying optimizations and building TensorRT CUDA engine`). Kolejne starty są szybkie.
+
+Obraz z kamery w RViz: panel `RecognitionResultOnImage` domyślnie pokazuje podgląd
+rozpoznawania sygnalizacji świetlnej, a mapy CARLA jej nie mają, więc widać „No Image”.
+Ustaw w nim temat `/sensing/camera/CAM_FRONT/image_raw`.
 
 ### Przydatne argumenty `aw-carla`
 
@@ -175,15 +291,7 @@ Argumenty są przekazywane do `ros2 launch`, np. `aw-carla perception:=false`:
 | `vehicle_type:=...` | inny pojazd CARLA. Sterowanie jest skalibrowane dla `vehicle.toyota.prius` |
 | `rviz:=false` | bez RViz |
 
-### Ruch uliczny
-
-W kontenerze Autoware (ruch jest wspólny dla wszystkich aut na serwerze):
-
-```bash
-python3 ~/utils/generate_traffic.py --host $CARLA_HOST -n 30 -w 10    # 30 aut, 10 pieszych
-```
-
-## Praca własna: workspace `ws/`
+### Praca własna: workspace `ws/`
 
 Katalog [`ws/`](ws/) jest zamontowany w kontenerze jako `~/ws`. Pakiety ROS 2 trzymaj
 w `ws/src/`; edytujesz je na hoście (np. VS Code), budujesz w kontenerze:
@@ -215,74 +323,52 @@ Najważniejsze tematy:
 | `/control/command/control_cmd` | polecenia sterowania z Autoware |
 | `/vehicle/status/velocity_status`, `/vehicle/status/steering_status` | stan pojazdu z CARLA |
 
+## Wszystko na jednym komputerze
+
+Serwer CARLA i Autoware na tej samej maszynie, np. do pracy w domu. Zrób instalację z obu
+sekcji powyżej (`docker compose pull` pobiera wszystkie obrazy naraz) i zostaw w `.env`
+`CARLA_HOST=localhost`. Potem:
+
+```bash
+./scripts/carla_server.sh            # albo --window, żeby widzieć okno CARLA
+xhost +local:docker
+docker compose up -d autoware
+./scripts/aw_shell.sh                # w kontenerze: aw-carla
+```
+
+CARLA i Autoware dzielą wtedy jedno GPU, więc okno CARLA wyraźnie spowalnia symulację.
+
 ## Konfiguracja
 
 Wersje i opcje są w pliku [`.env`](.env):
 
-- `ROS_DISTRO=jazzy` (domyślnie) albo `humble`. Humble kończy wsparcie w maju 2027.
-  Po zmianie: `docker compose pull autoware`.
-- `CARLA_ARGS`: argumenty serwera CARLA. Domyślnie `-RenderOffScreen` (bez okna symulatora,
-  dużo szybciej). Usuń tę flagę, jeśli chcesz okno CARLA, albo zmień jakość
-  (`-quality-level=Epic`).
-- `AUTOWARE_DATA`: gdzie na hoście leżą mapy i modele.
-- `CARLA_MAP`: mapa ładowana przez `carla-master`. Po zmianie: `docker compose up -d`.
-- `CARLA_HOST`, `CARLA_PORT`: adres serwera CARLA, z którym łączy się Autoware.
-  `localhost` = CARLA na tym samym komputerze.
+| Zmienna | Gdzie ma znaczenie | Działanie |
+|---|---|---|
+| `ROS_DISTRO` | terminal | `jazzy` (domyślnie) albo `humble` (wsparcie do maja 2027). Obraz humble nie jest opublikowany w GHCR: zbuduj go `docker compose build autoware` |
+| `CARLA_ARGS` | serwer | argumenty CARLA. Domyślnie `-RenderOffScreen -quality-level=Low -nosound`. Okno włącza `./scripts/carla_server.sh --window`, bez zmian w tym pliku |
+| `CARLA_MAP` | serwer | mapa ładowana przez `carla-master` |
+| `CARLA_NPC_VEHICLES` | serwer | liczba aut ruchu ulicznego |
+| `CARLA_SPECTATOR` | serwer | kamera okna: `top` (domyślnie, na starcie widok całej mapy z góry), `follow` (za kolejnymi autami), `off` (bez ustawiania) |
+| `CARLA_STEP_TIMEOUT` | serwer | najdłuższe czekanie na klientów w jednym kroku (domyślnie 0,25 s) |
+| `CARLA_HOST`, `CARLA_PORT` | terminal | adres serwera CARLA; `localhost` = ten sam komputer |
+| `AUTOWARE_DATA` | terminal | gdzie na hoście leżą mapy i modele |
 
-### Wspólny serwer CARLA
-
-Jedna CARLA może obsłużyć kilka Autoware naraz, każde na innym komputerze i z własnym
-autem w tym samym świecie. Wszyscy jeżdżą na tej samej mapie.
-
-**Serwer** (komputer z mocnym GPU, instalacja jak wyżej, bez modeli ML):
-
-```bash
-docker compose pull carla carla-master
-docker compose up -d carla carla-master
-docker compose logs -f carla-master        # kto jest podłączony
-```
-
-Firewall serwera musi przepuszczać TCP 2000–2002 (CARLA) i UDP 2005 (`carla-master`).
-
-**Komputer studenta**: w `.env` ustaw `CARLA_HOST=<adres IP serwera>`, a potem:
-
-```bash
-docker compose up -d autoware
-./scripts/aw_shell.sh
-aw-carla
-```
-
-Jak to działa i na co uważać:
-
-- `carla-master` po każdym kroku czeka na wszystkich klientów, ale najwyżej
-  `CARLA_STEP_TIMEOUT` (domyślnie 0,25 s). Wolniejszy komputer spowalnia więc symulację
-  wszystkim, ale zawieszony klient jej nie zatrzyma: po 3 s bez odpowiedzi jest odłączany,
-  a jego auto usuwane.
-- Serwer liczy czujniki wszystkich aut (domyślnie 1 kamera + lidar na auto), więc każde
-  kolejne auto zwalnia symulację. Najwięcej kosztuje lidar, liczony na procesorze serwera.
-- Dane z czujników jednego auta to ~20–40 MB/s. Wi-Fi wystarcza dla jednej osoby,
-  przy kilku lepiej kabel 1 Gbit/s.
-- Auta mają nazwy `ego_<nazwa komputera>`, więc na jednym komputerze uruchamiaj jedno Autoware.
-
-### CARLA bez ekranu (np. serwer w laboratorium)
+Bez ekranu (np. serwer w szafie) zamiast okna można też całkiem wyłączyć renderowanie:
 
 | `CARLA_ARGS` | Okno | Kamery | Lidar / GNSS / IMU | Uwagi |
 |---|---|---|---|---|
 | `-RenderOffScreen -quality-level=Low -nosound` (domyślnie) | nie | tak | tak | renderuje na GPU bez okna |
-| `-quality-level=Low -nosound` | tak | tak | tak | okno symulatora, wolniej |
 | `-nullrhi -nosound` | nie | **nie** | tak | bez renderowania, najlżejsze. Tylko z `perception:=false` lub percepcją z samego lidaru |
-
-RViz z kontenera Autoware nadal potrzebuje ekranu. Bez ekranu dodaj `rviz:=false`
-i steruj przez `drive_to_goal`.
 
 Lokalne zmiany w `compose.yaml` (inny obraz CARLA, dodatkowe wolumeny) wpisuj do
 `compose.override.yaml`. Wzór jest w [`compose.override.example.yaml`](compose.override.example.yaml).
 
-### Własny obraz Autoware (prowadzący)
+### Własne obrazy (prowadzący)
 
-Po zmianie [`docker/autoware/Dockerfile`](docker/autoware/Dockerfile) zbuduj obraz lokalnie
-(`docker compose build autoware`). Studenci dostaną go przez `docker compose pull` dopiero
-po wypchnięciu do GHCR:
+Po zmianie [`docker/autoware/Dockerfile`](docker/autoware/Dockerfile) albo
+[`docker/carla-master/`](docker/carla-master/) zbuduj obraz lokalnie
+(`docker compose build autoware carla-master`). Studenci dostaną go przez `docker compose pull`
+dopiero po wypchnięciu do GHCR:
 
 ```bash
 # jednorazowo; hasło = token GitHub (classic) z uprawnieniem write:packages
@@ -292,7 +378,7 @@ docker login ghcr.io -u PanHassan
 ```
 
 Nowy pakiet w GHCR jest prywatny. Raz ustaw go jako publiczny: GitHub → Packages →
-`carla-autoware` → Package settings → Change visibility → Public.
+pakiet → Package settings → Change visibility → Public.
 
 Obraz bazowy Autoware jest przypięty po digeście w Dockerfile, więc przebudowa daje to samo
 środowisko, nawet jeśli tag w `ghcr.io/autowarefoundation` zostanie nadpisany. Przy przejściu
@@ -304,11 +390,13 @@ i `AUTOWARE_VERSION` w `.env`.
 | Objaw | Rozwiązanie |
 |---|---|
 | w logu CARLA `lavapipe is not a conformant vulkan implementation`, symulacja bardzo wolna | CARLA renderuje na CPU, bo w kontenerze brakuje sterownika Vulkan NVIDII. Sprawdź `nvidia-ctk cdi list` (musi pokazać `nvidia.com/gpu=all`), w razie potrzeby `sudo nvidia-ctk cdi generate --output=/var/run/cdi/nvidia.yaml` |
-| CARLA kończy się zaraz po `Disabling core dumps.` | j.w. albo brak dostępu do X: `xhost +local:docker` |
+| CARLA kończy się zaraz po `Disabling core dumps.` | j.w. albo brak dostępu do ekranu w trybie z oknem: czy na serwerze jest zalogowana sesja graficzna |
+| `carla_server.sh --window`: „Brak dostępu do ekranu” | nikt nie jest zalogowany w sesji graficznej serwera. Zaloguj się albo uruchom bez okna |
 | `time-out ... waiting for the simulator` | CARLA jeszcze się ładuje albo padła: `docker compose logs carla` |
-| `aw-carla` czeka na serwer CARLA w nieskończoność | nie działa `carla-master` albo ma inną mapę: `docker compose logs carla-master`. Przy osobnym serwerze sprawdź `CARLA_HOST` i firewall |
-| `Brak kolejnej klatki CARLA` | `carla-master` się zatrzymał: `docker compose up -d carla-master` |
-| symulacja wolniejsza niż czas rzeczywisty (`ros2 topic hz /clock` < 20 Hz) | GPU nie nadąża: `-RenderOffScreen`, `use_light_weight_sensor_mapping:=True`, zamknij inne programy używające GPU |
+| `aw-carla` czeka na serwer CARLA w nieskończoność | nie działa `carla-master` albo ma inną mapę: `docker compose logs carla-master` na serwerze. Na terminalu sprawdź `CARLA_HOST` (adres serwera mógł się zmienić) i firewall |
+| `Brak kolejnej klatki CARLA` | `carla-master` się zatrzymał: na serwerze `./scripts/carla_server.sh` |
+| symulacja wolniejsza niż czas rzeczywisty (< 20 kroków/s w logu `carla-master`) | duże „czekanie na klientów”: sieć (Wi-Fi) albo przeciążony terminal. Kabel zamiast Wi-Fi, zamknij inne programy |
+| w RViz „No Image” zamiast kamery | patrz [Uruchomienie](#uruchomienie-1): ustaw temat `/sensing/camera/CAM_FRONT/image_raw` |
 | RViz się nie otwiera | `xhost +local:docker`, sprawdź `echo $DISPLAY` przed `docker compose up` |
 | tematy ROS niewidoczne z hosta | kontener używa CycloneDDS tylko na `lo`. Na hoście ustaw `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp` i ten sam `CYCLONEDDS_URI` (`docker compose exec autoware cat /home/aw/cyclonedds.xml`) |
 | sieć uczelniana blokuje pobieranie | użyj innej sieci do `docker compose pull` i skryptów `download_*` |
@@ -320,6 +408,7 @@ i `AUTOWARE_VERSION` w `.env`.
   światła. Jak dodać je do mapy: [README `autoware_carla_interface`](https://github.com/autowarefoundation/autoware_universe/tree/main/simulator/autoware_carla_interface#traffic-light-recognition).
 - Kalibracja sterowania (`accel/brake/steer_map.csv`) dotyczy Toyoty Prius. Inny pojazd
   wymaga ponownej kalibracji.
+- Ruch uliczny to tylko auta (bez pieszych).
 
 ## Podziękowania
 

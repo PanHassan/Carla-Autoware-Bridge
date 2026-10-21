@@ -1,14 +1,14 @@
-# CARLA 0.9.16 + Autoware 1.9.0 (autoware_carla_interface). Wersje w pliku .env.
+# CARLA 0.9.16 + Autoware 1.9.0 (autoware_carla_interface). Wersje i opcje w pliku .env.
 #
+# Serwer CARLA (README, "Serwer CARLA"):
+#   ./scripts/carla_server.sh [--window]   # carla + carla-master, z oknem lub bez
+#
+# Terminal z Autoware (README, "Terminal (Autoware)"): CARLA_HOST=<adres serwera> w .env, potem
 #   xhost +local:docker
-#   docker compose up -d                 # start CARLA, carla-master i kontenera Autoware
-#   ./scripts/aw_shell.sh                # terminal w kontenerze Autoware
-#   aw-carla                             # (w kontenerze) uruchom Autoware
-#   docker compose down                  # zatrzymaj wszystko
-#
-# Serwer CARLA dla kilku Autoware (README, "Wspólny serwer CARLA"):
-#   serwer:  docker compose up -d carla carla-master
-#   student: CARLA_HOST=<adres serwera> w .env, docker compose up -d autoware
+#   docker compose up -d autoware
+#   ./scripts/aw_shell.sh                  # terminal w kontenerze Autoware
+#   aw-carla                               # (w kontenerze) uruchom Autoware
+#   docker compose down                    # zatrzymaj
 
 x-common: &common
   network_mode: host
@@ -50,6 +50,8 @@ services:
       CARLA_MAP: ${CARLA_MAP:-Town01}
       CARLA_MASTER_PORT: ${CARLA_MASTER_PORT:-2005}
       CARLA_STEP_TIMEOUT: ${CARLA_STEP_TIMEOUT:-0.25}
+      CARLA_SPECTATOR: ${CARLA_SPECTATOR:-top}
+      CARLA_NPC_VEHICLES: ${CARLA_NPC_VEHICLES:-0}
     depends_on:
       - carla
     restart: unless-stopped
@@ -76,5 +78,4 @@ services:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ${AUTOWARE_DATA}:/home/aw/autoware_data
       - ./ws:/home/aw/ws
-      - ./utils:/home/aw/utils
     command: sleep infinity

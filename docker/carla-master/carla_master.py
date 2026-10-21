@@ -12,9 +12,18 @@ zapytania klientów (sterowanie, stan auta) tylko między klatkami, więc taktow
 przerwy spowalnia każde zapytanie o całą klatkę.
 
 Świat nigdy nie biegnie szybciej niż czas rzeczywisty.
+
+Master może też dodać ruch uliczny (CARLA_NPC_VEHICLES aut na autopilocie). Traffic Manager
+musi działać w procesie, który taktuje świat - w innym procesie auta stoją w miejscu.
+
+Przy CARLA z oknem (./scripts/carla_server.sh --window) master ustawia też kamerę okna
+(CARLA_SPECTATOR): "top" - na starcie z góry na całą mapę, potem swobodna (domyślnie), "follow" - za
+kolejnymi autami, "off" - kamera sterowana w oknie myszą i klawiszami WASD.
 """
 
+import math
 import os
+import random
 import select
 import signal
 import socket
@@ -37,6 +46,13 @@ CLIENT_TTL = 3.0
 LEFTOVER_TTL = 30.0
 # Ile spóźnienia względem czasu rzeczywistego wolno nadrabiać szybszymi krokami.
 CATCH_UP = 0.5
+# Liczba aut ruchu ulicznego (autopilot przez Traffic Manager), 0 = bez ruchu.
+NPC_VEHICLES = int(os.environ.get("CARLA_NPC_VEHICLES", "0"))
+NPC_ROLE = "npc"
+TM_PORT = 8000
+# Kamera okna CARLA: "follow" = śledzi auta, "off" = sterowana ręcznie w oknie.
+SPECTATOR = os.environ.get("CARLA_SPECTATOR", "top")
+SPECTATOR_SWITCH = float(os.environ.get("CARLA_SPECTATOR_SWITCH", "20"))
 # Co ile sekund wypisywać statystyki (0 = nigdy).
 STATS_PERIOD = float(os.environ.get("CARLA_STATS_PERIOD", "30"))
 
@@ -142,6 +158,123 @@ class Clients:
             self.receive(min(remaining, 0.01))
 
 
+class Traffic:
+    """Ruch uliczny: auta na autopilocie sterowane przez Traffic Manager w tym procesie."""
+
+    def __init__(self, client, world):
+        self.client = client
+        self.world = world
+        self.vehicles = []
+        # Auta po poprzednim uruchomieniu mastera (np. po awarii) stoją bez Traffic Managera.
+        self.destroy([v.id for v in world.get_actors().filter("vehicle.*")
+                      if v.attributes.get("role_name") == NPC_ROLE])
+        if NPC_VEHICLES <= 0:
+            return
+        tm = client.get_trafficmanager(TM_PORT)
+        tm.set_synchronous_mode(True)
+        tm.set_global_distance_to_leading_vehicle(2.5)
+        tm.global_percentage_speed_difference(30.0)
+        blueprints = [bp for bp in world.get_blueprint_library().filter("vehicle.*")
+                      if int(bp.get_attribute("number_of_wheels")) == 4]
+        spawn_points = world.get_map().get_spawn_points()
+        random.shuffle(spawn_points)
+        batch = []
+        for transform in spawn_points[:NPC_VEHICLES]:
+            bp = random.choice(blueprints)
+            bp.set_attribute("role_name", NPC_ROLE)
+            batch.append(carla.command.SpawnActor(bp, transform).then(
+                carla.command.SetAutopilot(carla.command.FutureActor, True, TM_PORT)))
+        self.vehicles = [r.actor_id for r in client.apply_batch_sync(batch, True) if not r.error]
+        print(f"Ruch uliczny: {len(self.vehicles)} aut", flush=True)
+
+    def destroy(self, ids):
+        if ids:
+            # Najpierw wyłączyć autopilota - usuwanie aut sterowanych przez TM potrafi wywrócić CARLA.
+            self.client.apply_batch_sync([carla.command.SetAutopilot(i, False, TM_PORT) for i in ids])
+            self.client.apply_batch_sync([carla.command.DestroyActor(i) for i in ids])
+
+    def cleanup(self):
+        self.destroy(self.vehicles)
+        self.vehicles = []
+
+
+class Spectator:
+    """Kamera okna CARLA (tryb CARLA_SPECTATOR).
+
+    - "top": na starcie widok z góry na całą mapę (widać wszystkie auta), potem kamera jest
+      swobodna - mysz i WASD w oknie CARLA.
+    - "follow": za jednym autem studenta, co CARLA_SPECTATOR_SWITCH s przełącza na kolejne.
+    """
+
+    # follow: kamera za autem
+    DISTANCE, HEIGHT, PITCH = 8.0, 4.0, -15.0
+    # top: zapas wokół dróg mapy [m]
+    MARGIN = 10.0
+
+    def __init__(self, world, mode):
+        self.world = world
+        self.mode = mode
+        self.spectator = world.get_spectator()
+        self.target = None
+        self.since = 0.0
+        self.last_refresh = 0.0
+        self.candidates = []
+        if mode == "top":
+            self.spectator.set_transform(self.map_overview(world))
+
+    def map_overview(self, world):
+        # Zasięg dróg mapy (punkty co 10 m), kamera nad środkiem tak wysoko, żeby objąć całość.
+        points = [w.transform.location for w in world.get_map().generate_waypoints(10.0)]
+        x0, x1 = min(p.x for p in points), max(p.x for p in points)
+        y0, y1 = min(p.y for p in points), max(p.y for p in points)
+        # Kąt widzenia kamery 90° w poziomie; w pionie przy oknie ~16:10 mniej (tan ~0.625),
+        # więc liczymy wysokość dla węższego kierunku.
+        height = (max(x1 - x0, y1 - y0) / 2 + self.MARGIN) / 0.625
+        # Skośnie z góry, nie pionowo: przy pitch -90° sterowanie kamerą w oknie (WASD, mysz)
+        # wariuje. Kamera cofnięta od środka mapy tak, żeby środek był w środku kadru.
+        pitch, yaw = -65.0, -90.0
+        back = height / math.tan(math.radians(-pitch))
+        x = (x0 + x1) / 2 - back * math.cos(math.radians(yaw))
+        y = (y0 + y1) / 2 - back * math.sin(math.radians(yaw))
+        return carla.Transform(carla.Location(x=x, y=y, z=height),
+                               carla.Rotation(pitch=pitch, yaw=yaw))
+
+    def refresh(self, now):
+        # Lista aut co sekundę, nie w każdym kroku - to zapytanie do serwera.
+        vehicles = list(self.world.get_actors().filter("vehicle.*"))
+        egos = [v for v in vehicles if v.attributes.get("role_name", "").startswith("ego_")]
+        self.candidates = sorted(egos or vehicles, key=lambda v: v.id)
+        self.last_refresh = now
+
+    def update(self):
+        now = time.monotonic()
+        if self.mode == "top":
+            return  # widok ustawiony raz w __init__, dalej kamerą steruje użytkownik
+        if now - self.last_refresh > 1.0:
+            self.refresh(now)
+        self.update_follow(now)
+
+    def update_follow(self, now):
+        if not self.candidates:
+            self.target = None
+            return
+        ids = {v.id for v in self.candidates}
+        if self.target is None or self.target.id not in ids or now - self.since > SPECTATOR_SWITCH:
+            current = self.target.id if self.target else -1
+            self.target = next((v for v in self.candidates if v.id > current), self.candidates[0])
+            self.since = now
+            name = self.target.attributes.get("role_name") or self.target.type_id
+            print(f"Kamera okna śledzi: {name}", flush=True)
+        t = self.target.get_transform()
+        yaw = math.radians(t.rotation.yaw)
+        location = t.location + carla.Location(
+            x=-self.DISTANCE * math.cos(yaw), y=-self.DISTANCE * math.sin(yaw), z=self.HEIGHT
+        )
+        self.spectator.set_transform(
+            carla.Transform(location, carla.Rotation(pitch=self.PITCH, yaw=t.rotation.yaw))
+        )
+
+
 class Stats:
     """Co STATS_PERIOD sekund wypisuje, na co idzie czas jednego kroku."""
 
@@ -178,13 +311,17 @@ def main():
     clients = Clients(world)
     print(f"Mapa: {world.get_map().name}", flush=True)
     ensure_settings(world)
+    traffic = Traffic(client, world)
     print(f"Czekam na zgłoszenia klientów na UDP {MASTER_PORT}", flush=True)
 
     next_tick = time.monotonic()
     last_check = next_tick
     stats = Stats()
+    spectator = Spectator(world, SPECTATOR) if SPECTATOR in ("top", "follow") else None
     try:
         while running:
+            if spectator:
+                spectator.update()
             t0 = time.monotonic()
             frame = world.tick()
             t1 = time.monotonic()
@@ -202,7 +339,10 @@ def main():
             clients.receive(max(0.0, next_tick - time.monotonic()))
             stats.add(t1 - t0, now - t1, time.monotonic() - now, len(clients.waiting_for))
     finally:
-        release(world)
+        try:
+            traffic.cleanup()
+        finally:
+            release(world)
         print("Master zatrzymany, CARLA w trybie asynchronicznym", flush=True)
 
 

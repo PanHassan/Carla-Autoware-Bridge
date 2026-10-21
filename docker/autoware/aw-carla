@@ -8,6 +8,12 @@ source /etc/profile.d/carla_autoware.sh
 
 CARLA_HOST="${CARLA_HOST:-localhost}"
 CARLA_PORT="${CARLA_PORT:-2000}"
+# Adres skopiowany z `ip addr` ma maskę sieci (np. 192.168.0.106/24) - to nie jest część adresu.
+if [[ "$CARLA_HOST" == */* ]]; then
+    echo "Uwaga: CARLA_HOST=$CARLA_HOST zawiera maskę sieci, używam ${CARLA_HOST%%/*} (popraw .env)" >&2
+    CARLA_HOST="${CARLA_HOST%%/*}"
+fi
+export CARLA_HOST  # czyta go też most (external_tick.py) przy zgłaszaniu kroków do carla-master
 
 # Mapę wybiera serwer - opcjonalny argument tylko ją sprawdza.
 if [[ $# -gt 0 && "$1" != *:=* ]]; then
