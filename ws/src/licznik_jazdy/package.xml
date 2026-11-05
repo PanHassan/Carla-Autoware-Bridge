@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>licznik_jazdy</name><version>0.1.0</version>
+  <description>Licznik jazdy CARLA/Autoware: terminal i okno Qt.</description>
+  <maintainer email="pawel-8934@users.noreply.github.com">pawel-8934</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_python</buildtool_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>autoware_vehicle_msgs</exec_depend>
+  <exec_depend>autoware_adapi_v1_msgs</exec_depend>
+  <exec_depend>python3-pyqt5</exec_depend>
+  <export><build_type>ament_python</build_type></export>
+</package>
