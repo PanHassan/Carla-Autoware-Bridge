@@ -145,8 +145,10 @@ docker compose pull carla carla-master       # ~20 GB
 ./scripts/carla_server.sh stop       # zatrzymaj
 ```
 
-Po restarcie komputera kontenery wstają same. Jeśli w trybie z oknem okno się nie pojawi
-(sesja graficzna nie była jeszcze gotowa), uruchom ponownie `./scripts/carla_server.sh --window`.
+Serwer nie startuje sam po włączeniu komputera: przed zajęciami uruchom go jednym z poleceń
+powyżej. Jeśli CARLA albo `carla-master` przestanie działać w trakcie, uruchom skrypt ponownie.
+Jeśli w trybie z oknem okno się nie pojawi, sprawdź, czy na serwerze jest zalogowana sesja
+graficzna, i uruchom ponownie `./scripts/carla_server.sh --window`.
 Zmiana trybu restartuje CARLA, więc podłączone Autoware trzeba wtedy uruchomić ponownie.
 
 ### Podgląd w oknie

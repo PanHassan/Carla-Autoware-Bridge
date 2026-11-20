@@ -32,7 +32,8 @@ services:
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     command: bash -c "./CarlaUE4.sh ${CARLA_ARGS} -quality-level=${CARLA_QUALITY:-Epic}"
-    restart: unless-stopped
+    # Bez automatycznego startu: serwer uruchamia się ręcznie (./scripts/carla_server.sh).
+    restart: "no"
 
   # Jedyny proces, który taktuje świat CARLA: ładuje CARLA_MAP i włącza tryb synchroniczny.
   # Mosty w kontenerach Autoware tylko czekają na kolejne kroki, więc do jednej CARLA może
@@ -54,7 +55,7 @@ services:
       CARLA_NPC_VEHICLES: ${CARLA_NPC_VEHICLES:-0}
     depends_on:
       - carla
-    restart: unless-stopped
+    restart: "no"
 
   autoware:
     <<: *common
