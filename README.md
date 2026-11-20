@@ -247,10 +247,11 @@ docker compose pull autoware
 ./scripts/download_artifacts.sh
 ```
 
-W pliku `.env` wpisz adres serwera:
+W pliku `.env` jest już adres serwera w laboratorium. Zmień go tylko wtedy, gdy serwer
+ma inny adres:
 
 ```bash
-CARLA_HOST=192.168.0.106        # adres IP serwera CARLA
+CARLA_HOST=192.168.1.1          # adres IP serwera CARLA
 ```
 
 ### Wspólna jazda ręczna (`carla-manual`)
@@ -377,7 +378,7 @@ Najważniejsze tematy:
 ## Wszystko na jednym komputerze
 
 Serwer CARLA i Autoware na tej samej maszynie, np. do pracy w domu. Zrób instalację z obu
-sekcji powyżej (`docker compose pull` pobiera wszystkie obrazy naraz) i zostaw w `.env`
+sekcji powyżej (`docker compose pull` pobiera wszystkie obrazy naraz) i ustaw w `.env`
 `CARLA_HOST=localhost`. Potem:
 
 ```bash
