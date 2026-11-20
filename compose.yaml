@@ -31,7 +31,15 @@ services:
     image: ${CARLA_IMAGE:-carlasim/carla:${CARLA_VERSION}}
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
-    command: bash -c "./CarlaUE4.sh ${CARLA_ARGS} -quality-level=${CARLA_QUALITY:-Epic}"
+    # Startowa mapa = CARLA_MAP. Bez tego CARLA wczytuje domyślne Town10HD, a carla-master
+    # dopiero potem przełącza na CARLA_MAP (dwa ładowania). CARLA 0.9.16 ignoruje mapę podaną
+    # w linii poleceń, więc podmieniamy ją w DefaultEngine.ini.
+    command: >-
+      bash -c "sed -i
+      -e 's#^GameDefaultMap=.*#GameDefaultMap=/Game/Carla/Maps/${CARLA_MAP:-Town01}.${CARLA_MAP:-Town01}#'
+      -e 's#^ServerDefaultMap=.*#ServerDefaultMap=/Game/Carla/Maps/${CARLA_MAP:-Town01}.${CARLA_MAP:-Town01}#'
+      CarlaUE4/Config/DefaultEngine.ini &&
+      ./CarlaUE4.sh ${CARLA_ARGS} -quality-level=${CARLA_QUALITY:-Epic}"
     # Bez automatycznego startu: serwer uruchamia się ręcznie (./scripts/carla_server.sh).
     restart: "no"
 
