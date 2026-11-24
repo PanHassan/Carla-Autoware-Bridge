@@ -24,6 +24,9 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'predkosc = licznik_jazdy.predkosc:main',
+            'licznik = licznik_jazdy.licznik:main',
+            'okno = licznik_jazdy.okno:main',
         ],
     },
 )
